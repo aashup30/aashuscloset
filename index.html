@@ -17,6 +17,10 @@
           </div>
         </div>
         <label>
+          Email
+          <input id="emailInput" type="email" autocomplete="username" required />
+        </label>
+        <label>
           Password
           <input id="passwordInput" type="password" autocomplete="current-password" required />
         </label>
@@ -281,6 +285,8 @@
       </div>
     </template>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./supabase-config.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

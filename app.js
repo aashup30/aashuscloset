@@ -1,9 +1,6 @@
 const STORAGE_KEY = "mycloset.state.v1";
 const AUTH_KEY = "aashuscloset.role";
-const PASSWORDS = {
-  master: "change-this-master",
-  guest: "change-this-guest",
-};
+const CLOUD_STATE_ID = "main";
 
 const baseCategories = ["Tops", "Bottoms", "Outerwear", "Accessories", "Cultural Wear", "Shoes"];
 const colorOptions = [
@@ -112,10 +109,18 @@ let activeOutfitPickerId = "";
 let activeBoardPickerId = "";
 let activeBoardDetailId = "";
 let currentRole = "";
+let currentUser = null;
+let cloudSaveTimer = null;
+const supabaseConfig = window.AASHUS_CLOSET_SUPABASE;
+const supabaseClient =
+  window.supabase && supabaseConfig?.url && supabaseConfig?.publishableKey
+    ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.publishableKey)
+    : null;
 
 const els = {
   authScreen: document.querySelector("#authScreen"),
   authForm: document.querySelector("#authForm"),
+  emailInput: document.querySelector("#emailInput"),
   passwordInput: document.querySelector("#passwordInput"),
   authError: document.querySelector("#authError"),
   appShell: document.querySelector("#appShell"),
@@ -201,6 +206,12 @@ function roleLabel() {
   return "Public board";
 }
 
+function requireSupabase() {
+  if (!supabaseClient) {
+    throw new Error("Supabase is not configured. Check supabase-config.js and the Supabase CDN script.");
+  }
+}
+
 function item(id, name, brand, category, type, material, colors, location, tags) {
   return { id, name, brand, category, type, material, colors, location, tags };
 }
@@ -213,6 +224,34 @@ function loadState() {
     console.warn("Could not load saved closet", error);
   }
   return structuredClone(defaultState);
+}
+
+async function loadCloudState() {
+  requireSupabase();
+  const { data, error } = await supabaseClient.from("closet_state").select("data").eq("id", CLOUD_STATE_ID).maybeSingle();
+  if (error) throw error;
+  if (data?.data?.items?.length) {
+    state = normalizeState(data.data);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } else {
+    await saveCloudState();
+  }
+}
+
+async function saveCloudState() {
+  if (!supabaseClient || !currentUser || isPublicBoard()) return;
+  const payload = {
+    id: CLOUD_STATE_ID,
+    data: state,
+  };
+  const { error } = await supabaseClient.from("closet_state").upsert(payload, { onConflict: "id" });
+  if (error) console.warn("Cloud save failed", error);
+}
+
+function scheduleCloudSave() {
+  if (!supabaseClient || !currentUser || isPublicBoard()) return;
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(saveCloudState, 450);
 }
 
 function normalizeState(raw) {
@@ -256,6 +295,48 @@ function initializeAccess() {
   syncPermissions();
 }
 
+async function loadRoleForUser() {
+  const { data, error } = await supabaseClient.from("profiles").select("role").eq("user_id", currentUser.id).single();
+  if (error) throw error;
+  currentRole = data.role;
+  sessionStorage.setItem(AUTH_KEY, currentRole);
+}
+
+async function initializeSupabaseAccess() {
+  if (!supabaseClient) {
+    initializeAccess();
+    return;
+  }
+
+  const { data } = await supabaseClient.auth.getSession();
+  if (data.session?.user) {
+    currentUser = data.session.user;
+    try {
+      await loadRoleForUser();
+      await loadCloudState();
+      syncPermissions();
+      renderAll();
+      if (isBoardHash()) handleHash();
+      if (isGuest()) setView("closet");
+      return;
+    } catch (error) {
+      console.warn("Could not restore Supabase session", error);
+      await supabaseClient.auth.signOut();
+      currentUser = null;
+      currentRole = "";
+    }
+  }
+
+  if (isBoardHash()) {
+    currentRole = "public";
+    syncPermissions();
+    renderAll();
+    handleHash();
+  } else {
+    syncPermissions();
+  }
+}
+
 function locationsFor(entry) {
   return entry.locations?.length ? entry.locations : entry.location ? [entry.location] : [];
 }
@@ -266,6 +347,7 @@ function locationText(entry) {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudSave();
 }
 
 function slug(value) {
@@ -903,27 +985,36 @@ function handleHash() {
 }
 
 els.navTabs.forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
-els.authForm.addEventListener("submit", (event) => {
+els.authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const password = els.passwordInput.value;
-  if (password === PASSWORDS.master) {
-    currentRole = "master";
-  } else if (password === PASSWORDS.guest) {
-    currentRole = "guest";
-  } else {
-    els.authError.textContent = "That password did not work.";
+  if (!supabaseClient) {
+    els.authError.textContent = "Supabase is not configured.";
     return;
   }
-  sessionStorage.setItem(AUTH_KEY, currentRole);
-  els.passwordInput.value = "";
-  els.authError.textContent = "";
-  syncPermissions();
-  renderAll();
-  if (isGuest()) setView("closet");
+  try {
+    els.authError.textContent = "";
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: els.emailInput.value.trim(),
+      password: els.passwordInput.value,
+    });
+    if (error) throw error;
+    currentUser = data.user;
+    await loadRoleForUser();
+    await loadCloudState();
+    els.emailInput.value = "";
+    els.passwordInput.value = "";
+    syncPermissions();
+    renderAll();
+    if (isGuest()) setView("closet");
+  } catch (error) {
+    els.authError.textContent = error.message || "Login failed.";
+  }
 });
 
-els.logoutButton.addEventListener("click", () => {
+els.logoutButton.addEventListener("click", async () => {
+  if (supabaseClient) await supabaseClient.auth.signOut();
   sessionStorage.removeItem(AUTH_KEY);
+  currentUser = null;
   currentRole = "";
   activeBoardDetailId = "";
   syncPermissions();
@@ -1234,4 +1325,4 @@ window.addEventListener("hashchange", () => {
   handleHash();
 });
 
-initializeAccess();
+initializeSupabaseAccess();
