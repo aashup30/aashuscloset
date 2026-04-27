@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aashu's Closet</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section class="auth-screen" id="authScreen">
+      <form class="auth-card" id="authForm">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">AC</div>
+          <div>
+            <h1>Aashu's Closet</h1>
+            <p>Your Closet, Organized</p>
+          </div>
+        </div>
+        <label>
+          Password
+          <input id="passwordInput" type="password" autocomplete="current-password" required />
+        </label>
+        <p class="auth-error" id="authError" role="alert"></p>
+        <button class="primary-button full-width" type="submit">Enter closet</button>
+      </form>
+    </section>
+
+    <div class="app-shell is-hidden" id="appShell">
+      <aside class="sidebar" aria-label="Primary">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">AC</div>
+          <div>
+            <h1>Aashu's Closet</h1>
+            <p>Your Closet, Organized</p>
+          </div>
+        </div>
+
+        <nav class="nav-tabs" aria-label="Sections">
+          <button class="nav-tab is-active" data-view="closet" type="button">
+            <span aria-hidden="true">▦</span>
+            Closet
+          </button>
+          <button class="nav-tab" data-view="outfits" type="button">
+            <span aria-hidden="true">◧</span>
+            Outfits
+          </button>
+          <button class="nav-tab" data-view="locations" type="button">
+            <span aria-hidden="true">⌖</span>
+            Locations
+          </button>
+          <button class="nav-tab" data-view="boards" type="button">
+            <span aria-hidden="true">◫</span>
+            Boards
+          </button>
+        </nav>
+
+        <section class="location-panel" aria-labelledby="location-heading">
+          <h2 id="location-heading">Locations</h2>
+          <div id="locationStats" class="location-stack"></div>
+        </section>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Location-aware wardrobe</p>
+            <h2 id="viewTitle">Closet</h2>
+          </div>
+          <div class="topbar-actions">
+            <span class="role-pill" id="rolePill"></span>
+            <button class="tiny-button" id="logoutButton" type="button">Log out</button>
+            <button class="icon-button" id="resetDemoButton" type="button" title="Reset demo data" aria-label="Reset demo data">↺</button>
+            <button class="primary-button" id="addItemButton" type="button">
+              <span aria-hidden="true">＋</span>
+              Add item
+            </button>
+          </div>
+        </header>
+
+        <section class="metric-strip" aria-label="Closet summary">
+          <div>
+            <strong id="totalItems">0</strong>
+            <span>Items</span>
+          </div>
+          <div>
+            <strong id="totalLocations">0</strong>
+            <span>Locations</span>
+          </div>
+        </section>
+
+        <section id="closetView" class="view is-visible" aria-label="Closet inventory">
+          <div class="toolbar">
+            <label class="search-field">
+              <span aria-hidden="true">⌕</span>
+              <input id="searchInput" type="search" placeholder="Search: black shirt Austria !sport" autocomplete="off" />
+            </label>
+            <select id="categoryFilter" aria-label="Category filter"></select>
+            <select id="locationFilter" aria-label="Location filter"></select>
+            <select id="tagFilter" aria-label="Tag filter"></select>
+          </div>
+          <div id="closetGrid" class="closet-grid"></div>
+        </section>
+
+        <section id="outfitsView" class="view" aria-label="Outfits">
+          <div class="split-layout">
+            <form id="outfitForm" class="tool-panel">
+              <h3>Create outfit</h3>
+              <label>
+                Outfit name
+                <input name="name" required placeholder="Wedding set, Office look, Weekend layers" />
+              </label>
+              <label>
+                Occasion
+                <input name="occasion" placeholder="Wedding, work, travel, casual" />
+              </label>
+              <label>
+                Tags
+                <input name="tags" placeholder="comma separated" />
+              </label>
+              <label>
+                Notes
+                <input name="notes" placeholder="Why this outfit works" />
+              </label>
+              <div>
+                <p class="field-label">Items</p>
+                <label class="search-field compact-search">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="outfitItemSearch" type="search" placeholder="Search closet items" autocomplete="off" />
+                </label>
+                <div id="outfitPicker" class="picker-grid"></div>
+              </div>
+              <button class="primary-button full-width" type="submit">Save outfit</button>
+            </form>
+            <div id="outfitGrid" class="board-grid"></div>
+          </div>
+        </section>
+
+        <section id="locationsView" class="view" aria-label="Locations">
+          <div id="locationButtons" class="location-buttons"></div>
+          <div id="locationBoard" class="location-board"></div>
+        </section>
+
+        <section id="boardsView" class="view" aria-label="Boards">
+          <div class="split-layout">
+            <form id="boardForm" class="tool-panel">
+              <h3>Create board</h3>
+              <label>
+                Board name
+                <input name="name" required placeholder="Winter sweaters, Work outfits, Diwali set" />
+              </label>
+              <label>
+                Notes
+                <input name="notes" placeholder="Why this board exists" />
+              </label>
+              <button class="primary-button full-width" type="submit">Save board</button>
+            </form>
+            <div id="boardGrid" class="board-grid"></div>
+            <div id="boardDetailView" class="board-detail-view is-hidden"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="itemDialog">
+      <form id="itemForm" method="dialog" class="dialog-card">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Three-tap capture flow</p>
+            <h3>Add clothing item</h3>
+          </div>
+          <button class="icon-button" value="cancel" type="button" id="closeDialogButton" aria-label="Close">×</button>
+        </div>
+
+        <label class="upload-box">
+          <input name="photo" type="file" accept="image/*" />
+          <span aria-hidden="true">▧</span>
+          <strong>Upload photo</strong>
+          <small>Optional for demo. A visual placeholder is generated if skipped.</small>
+        </label>
+
+        <div class="form-grid">
+          <label>
+            Name
+            <input name="name" required placeholder="Linen button-up" />
+          </label>
+          <label>
+            Brand
+            <input name="brand" placeholder="Uniqlo, Patagonia, Fabindia" />
+          </label>
+          <label>
+            Category
+            <input name="category" id="itemCategoryInput" list="categoryOptions" required placeholder="Tops" />
+          </label>
+          <label>
+            Type
+            <input name="type" id="itemTypeInput" list="typeOptions" required placeholder="Button-up" />
+          </label>
+          <label>
+            Material
+            <input name="material" placeholder="cotton, linen, silk" />
+          </label>
+          <label>
+            Location
+            <input name="location" id="itemLocationInput" list="locationOptions" required placeholder="Home" />
+          </label>
+          <fieldset class="wide-field color-field">
+            <legend>Colors</legend>
+            <div id="itemColorChips" class="color-chip-grid"></div>
+          </fieldset>
+          <label class="wide-field">
+            Selected colors
+            <input name="colorNames" id="colorNamesInput" readonly placeholder="Select one or more color chips" />
+          </label>
+          <label>
+            Tags
+            <input name="tags" placeholder="casual, winter, outdoor" />
+          </label>
+        </div>
+
+        <button class="primary-button full-width" type="submit">Add to closet</button>
+        <datalist id="categoryOptions"></datalist>
+        <datalist id="typeOptions"></datalist>
+        <datalist id="locationOptions"></datalist>
+        <datalist id="tagOptions"></datalist>
+      </form>
+    </dialog>
+
+    <dialog id="itemDetailDialog">
+      <div class="dialog-card" id="itemDetailContent"></div>
+    </dialog>
+
+    <dialog id="outfitDetailDialog">
+      <div class="dialog-card" id="outfitDetailContent"></div>
+    </dialog>
+
+    <dialog id="outfitPieceDialog">
+      <form class="dialog-card wide-dialog" id="outfitPieceForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Choose from closet</p>
+            <h3 id="outfitPieceTitle">Add pieces</h3>
+          </div>
+          <button class="icon-button" type="button" id="closeOutfitPieceDialog" aria-label="Close">×</button>
+        </div>
+        <div class="toolbar picker-toolbar">
+          <label class="search-field">
+            <span aria-hidden="true">⌕</span>
+            <input id="outfitPieceSearch" type="search" placeholder="Search closet items" autocomplete="off" />
+          </label>
+          <select id="outfitPieceCategory" aria-label="Category filter"></select>
+          <select id="outfitPieceLocation" aria-label="Location filter"></select>
+          <select id="outfitPieceTag" aria-label="Tag filter"></select>
+        </div>
+        <div id="outfitPieceGrid" class="closet-grid selectable-grid"></div>
+        <button class="primary-button full-width" type="submit">Add selected pieces</button>
+      </form>
+    </dialog>
+
+    <dialog id="boardPickerDialog">
+      <form class="dialog-card wide-dialog" id="boardPickerForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Add to board</p>
+            <h3 id="boardPickerTitle">Choose pieces</h3>
+          </div>
+          <button class="icon-button" type="button" id="closeBoardPickerDialog" aria-label="Close">×</button>
+        </div>
+        <label class="search-field">
+          <span aria-hidden="true">⌕</span>
+          <input id="boardPickerSearch" type="search" placeholder="Search items or outfits" autocomplete="off" />
+        </label>
+        <div id="boardPickerGrid" class="closet-grid selectable-grid"></div>
+        <button class="primary-button full-width" type="submit">Add selected</button>
+      </form>
+    </dialog>
+
+    <template id="emptyTemplate">
+      <div class="empty-state">
+        <strong>No matches</strong>
+        <span>Try another search, remove a filter, or add a new item.</span>
+      </div>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
