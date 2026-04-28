@@ -125,6 +125,9 @@ let quickMasterClicks = 0;
 let quickMasterClickTimer = null;
 let selectedPhotoFiles = [];
 let draggedPhotoIndex = null;
+let itemDetailImageIndexes = {};
+let editPhotoDraftsByItem = {};
+let draggedEditPhoto = null;
 const supabaseConfig = window.AASHUS_CLOSET_SUPABASE;
 const supabaseClient =
   window.supabase && supabaseConfig?.url && supabaseConfig?.publishableKey
@@ -496,6 +499,56 @@ function primaryImageFrom(images) {
   return images?.[0] || "";
 }
 
+function imagesForItem(entry) {
+  return entry.images?.length ? entry.images : entry.image ? [entry.image] : [];
+}
+
+function renderItemDetailVisual(entry) {
+  const images = imagesForItem(entry);
+  if (!images.length) return `<div class="item-visual detail-visual">${renderGarment(entry)}</div>`;
+  const index = Math.min(itemDetailImageIndexes[entry.id] || 0, images.length - 1);
+  itemDetailImageIndexes[entry.id] = index;
+  return `<div class="item-visual detail-visual item-carousel">
+    <img alt="${entry.name}" src="${images[index]}">
+    ${
+      images.length > 1
+        ? `<button class="carousel-button carousel-prev" type="button" data-item-image-step="-1" data-item-id="${entry.id}" aria-label="Previous photo">‹</button>
+          <button class="carousel-button carousel-next" type="button" data-item-image-step="1" data-item-id="${entry.id}" aria-label="Next photo">›</button>
+          <span class="carousel-count">${index + 1} / ${images.length}</span>`
+        : ""
+    }
+  </div>`;
+}
+
+function renderEditPhotoPreview(entry) {
+  const draft = editPhotoDraftFor(entry);
+  if (!draft.length) return '<div data-edit-photo-section><p class="field-label">No saved photos yet.</p></div>';
+  return `<div data-edit-photo-section><div class="upload-preview-grid edit-photo-grid">
+    ${draft
+      .map(
+        (photo, index) => `<div class="upload-preview-tile" data-edit-photo-index="${index}">
+          <button class="photo-remove-button" type="button" data-edit-photo-remove="${entry.id}:${index}" aria-label="Remove photo ${index + 1}">×</button>
+          <img src="${photo.src}" alt="${entry.name} photo ${index + 1}">
+          ${index === 0 ? '<span class="tag">Display image</span>' : ""}
+        </div>`,
+      )
+      .join("")}
+  </div></div>`;
+}
+
+function editPhotoDraftFor(entry) {
+  if (!editPhotoDraftsByItem[entry.id]) {
+    editPhotoDraftsByItem[entry.id] = imagesForItem(entry).map((src) => ({ type: "existing", src }));
+  }
+  return editPhotoDraftsByItem[entry.id];
+}
+
+function updateEditPhotoPreview(form, entry) {
+  const section = form.querySelector("[data-edit-photo-section]");
+  if (!section) return;
+  section.outerHTML = renderEditPhotoPreview(entry);
+}
+
 function renderItemCard(entry, compact = false) {
   return `<article class="item-card clickable-card" data-item-card="${entry.id}" tabindex="0" aria-label="Open ${entry.name}">
     <div class="item-visual">${renderGarment(entry, compact)}</div>
@@ -567,7 +620,7 @@ function outfitOptionsForItem(itemId) {
     .join("");
 }
 
-function openItemDetail(itemId) {
+function openItemDetail(itemId, editOpen = false) {
   const entry = getItem(itemId);
   if (!entry) return;
   const outfitOptions = outfitOptionsForItem(entry.id);
@@ -580,7 +633,7 @@ function openItemDetail(itemId) {
       <button class="icon-button" type="button" data-close-detail="item" aria-label="Close">×</button>
     </div>
     <div class="detail-layout">
-      <div class="item-visual detail-visual">${renderGarment(entry)}</div>
+      ${renderItemDetailVisual(entry)}
       <div class="detail-info">
         <p><strong>Brand</strong><span>${entry.brand || "Unbranded"}</span></p>
         <p><strong>Type</strong><span>${entry.type || "Item"}</span></p>
@@ -593,7 +646,7 @@ function openItemDetail(itemId) {
       </div>
     </div>
     ${isMaster() ? `<button class="tiny-button" type="button" data-toggle-item-edit>Edit item</button>` : ""}
-    <form class="edit-form is-hidden" data-item-edit="${entry.id}">
+    <form class="edit-form ${editOpen ? "" : "is-hidden"}" data-item-edit="${entry.id}">
       <label>
         Name
         <input name="name" required value="${entry.name}">
@@ -622,6 +675,12 @@ function openItemDetail(itemId) {
         Tags
         <input name="tags" value="${(entry.tags || []).join(", ")}" placeholder="comma separated">
       </label>
+      <label>
+        Add photos
+        <input name="photos" type="file" accept="image/*" multiple>
+      </label>
+      ${renderEditPhotoPreview(entry)}
+      <p class="auth-error" data-edit-photo-error role="alert"></p>
       <button class="tiny-button" type="submit">Save item details</button>
       <button class="danger-button" type="button" data-delete-item="${entry.id}">Delete item</button>
     </form>
@@ -1457,8 +1516,93 @@ els.itemDetailContent.addEventListener("click", (event) => {
   if (event.target.closest("[data-toggle-item-edit]")) {
     els.itemDetailContent.querySelector("[data-item-edit]")?.classList.toggle("is-hidden");
   }
+  const photoRemoveButton = event.target.closest("[data-edit-photo-remove]");
+  if (photoRemoveButton) {
+    const [itemId, indexText] = photoRemoveButton.dataset.editPhotoRemove.split(":");
+    const entry = getItem(itemId);
+    if (!entry) return;
+    const editForm = event.target.closest("[data-item-edit]");
+    editPhotoDraftFor(entry).splice(Number(indexText), 1);
+    if (editForm) updateEditPhotoPreview(editForm, entry);
+    return;
+  }
+  const imageTile = event.target.closest("[data-edit-photo-index]");
+  if (imageTile && !event.target.closest("[data-edit-photo-remove]")) {
+    return;
+  }
+  const imageButton = event.target.closest("[data-item-image-step]");
+  if (imageButton) {
+    const entry = getItem(imageButton.dataset.itemId);
+    const images = entry ? imagesForItem(entry) : [];
+    if (!entry || images.length < 2) return;
+    const currentIndex = itemDetailImageIndexes[entry.id] || 0;
+    itemDetailImageIndexes[entry.id] = (currentIndex + Number(imageButton.dataset.itemImageStep) + images.length) % images.length;
+    openItemDetail(entry.id);
+  }
   const deleteButton = event.target.closest("[data-delete-item]");
   if (deleteButton) deleteItem(deleteButton.dataset.deleteItem);
+});
+
+els.itemDetailContent.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("[data-edit-photo-remove]")) return;
+  const tile = event.target.closest("[data-edit-photo-index]");
+  const editForm = event.target.closest("[data-item-edit]");
+  if (!tile || !editForm) return;
+  draggedEditPhoto = {
+    itemId: editForm.dataset.itemEdit,
+    index: Number(tile.dataset.editPhotoIndex),
+  };
+  tile.classList.add("is-dragging");
+  tile.setPointerCapture?.(event.pointerId);
+});
+
+els.itemDetailContent.addEventListener("pointerup", (event) => {
+  if (!draggedEditPhoto) return;
+  const source = draggedEditPhoto;
+  const target = document.elementFromPoint(event.clientX, event.clientY);
+  const tile = target?.closest?.("[data-edit-photo-index]");
+  const editForm = event.target.closest("[data-item-edit]") || els.itemDetailContent.querySelector(`[data-item-edit="${source.itemId}"]`);
+  const entry = getItem(source.itemId);
+  const targetIndex = tile ? Number(tile.dataset.editPhotoIndex) : source.index;
+  draggedEditPhoto = null;
+  els.itemDetailContent.querySelectorAll(".is-dragging").forEach((draggedTile) => draggedTile.classList.remove("is-dragging"));
+  if (!entry || !editForm || targetIndex === source.index) return;
+  const draft = editPhotoDraftFor(entry);
+  const [movedPhoto] = draft.splice(source.index, 1);
+  draft.splice(targetIndex, 0, movedPhoto);
+  updateEditPhotoPreview(editForm, entry);
+});
+
+els.itemDetailContent.addEventListener("pointercancel", () => {
+  draggedEditPhoto = null;
+  els.itemDetailContent.querySelectorAll(".is-dragging").forEach((tile) => tile.classList.remove("is-dragging"));
+});
+
+els.itemDetailContent.addEventListener("change", async (event) => {
+  const input = event.target.closest('[data-item-edit] input[name="photos"]');
+  if (!input) return;
+  const editForm = input.closest("[data-item-edit]");
+  const entry = getItem(editForm.dataset.itemEdit);
+  if (!entry) return;
+  const editPhotoError = editForm.querySelector("[data-edit-photo-error]");
+  if (editPhotoError) editPhotoError.textContent = "";
+  const draft = editPhotoDraftFor(entry);
+  const newFiles = [...(input.files || [])];
+  const availableSlots = Math.max(0, 3 - draft.length);
+  if (newFiles.length > availableSlots) {
+    const message =
+      availableSlots === 0
+        ? "Please remove a photo before uploading another, limit is 3."
+        : `You can add ${availableSlots} more photo${availableSlots === 1 ? "" : "s"}, limit is 3.`;
+    if (editPhotoError) editPhotoError.textContent = message;
+    input.value = "";
+    updateEditPhotoPreview(editForm, entry);
+    return;
+  }
+  const newDraftPhotos = await Promise.all(newFiles.map(async (file) => ({ type: "new", file, src: await fileToDataUrl(file) })));
+  editPhotoDraftsByItem[entry.id] = [...draft, ...newDraftPhotos];
+  input.value = "";
+  updateEditPhotoPreview(editForm, entry);
 });
 
 els.outfitDetailContent.addEventListener("click", (event) => {
@@ -1499,13 +1643,20 @@ els.outfitPieceForm.addEventListener("submit", (event) => {
   els.outfitPieceDialog.close();
 });
 
-els.itemDetailContent.addEventListener("submit", (event) => {
+els.itemDetailContent.addEventListener("submit", async (event) => {
   const editForm = event.target.closest("[data-item-edit]");
   if (editForm) {
     event.preventDefault();
     const entry = getItem(editForm.dataset.itemEdit);
     const form = new FormData(editForm);
     if (!entry) return;
+    const editPhotoError = editForm.querySelector("[data-edit-photo-error]");
+    if (editPhotoError) editPhotoError.textContent = "";
+    const photoDraft = editPhotoDraftFor(entry);
+    if (photoDraft.length > 3) {
+      if (editPhotoError) editPhotoError.textContent = "Please remove a photo before uploading another, limit is 3.";
+      return;
+    }
     entry.name = form.get("name").trim();
     entry.brand = form.get("brand").trim();
     entry.category = form.get("category").trim();
@@ -1514,6 +1665,18 @@ els.itemDetailContent.addEventListener("submit", (event) => {
     entry.locations = listFromText(form.get("locations"));
     entry.location = entry.locations[0] || "";
     entry.tags = tagsFromText(form.get("tags"));
+    const finalImages = [];
+    for (const [index, photo] of photoDraft.entries()) {
+      if (photo.type === "existing") {
+        finalImages.push(photo.src);
+      } else {
+        finalImages.push(await uploadItemPhoto(photo.file, `${entry.id}-edit-${index + 1}`));
+      }
+    }
+    entry.images = finalImages.filter(Boolean).slice(0, 3);
+    entry.image = primaryImageFrom(entry.images);
+    editPhotoDraftsByItem[entry.id] = null;
+    itemDetailImageIndexes[entry.id] = 0;
     state.selectedLocation = entry.locations[0] || "";
     saveState();
     renderAll();
