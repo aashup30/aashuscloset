@@ -115,6 +115,8 @@ let activeBoardDetailId = "";
 let currentRole = "";
 let currentUser = null;
 let cloudSaveTimer = null;
+let quickMasterClicks = 0;
+let quickMasterClickTimer = null;
 const supabaseConfig = window.AASHUS_CLOSET_SUPABASE;
 const supabaseClient =
   window.supabase && supabaseConfig?.url && supabaseConfig?.publishableKey
@@ -1084,6 +1086,15 @@ els.authForm.addEventListener("submit", async (event) => {
 });
 
 els.quickMasterButton.addEventListener("click", () => {
+  quickMasterClicks += 1;
+  window.clearTimeout(quickMasterClickTimer);
+  quickMasterClickTimer = window.setTimeout(() => {
+    quickMasterClicks = 0;
+  }, 1200);
+
+  if (quickMasterClicks < 3) return;
+  quickMasterClicks = 0;
+
   const password = window.prompt("Master password");
   if (password !== LOCAL_MASTER_PASSWORD) {
     els.authError.textContent = "That password did not work.";
