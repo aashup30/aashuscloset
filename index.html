@@ -114,10 +114,6 @@
                 <input name="name" required placeholder="Wedding set, Office look, Weekend layers" />
               </label>
               <label>
-                Occasion
-                <input name="occasion" placeholder="Wedding, work, travel, casual" />
-              </label>
-              <label>
                 Tags
                 <input name="tags" placeholder="comma separated" />
               </label>
@@ -169,21 +165,18 @@
       <form id="itemForm" method="dialog" class="dialog-card">
         <div class="dialog-header">
           <div>
-            <p class="eyebrow">Three-tap capture flow</p>
             <h3>Add clothing item</h3>
           </div>
           <button class="icon-button" value="cancel" type="button" id="closeDialogButton" aria-label="Close">×</button>
         </div>
 
         <label class="upload-box">
-          <input name="photo" id="itemPhotoInput" type="file" accept="image/*" />
+          <input name="photo" id="itemPhotoInput" type="file" accept="image/*" multiple />
           <span aria-hidden="true">▧</span>
-          <strong>Upload photo</strong>
-          <small>Optional for demo. A visual placeholder is generated if skipped.</small>
+          <strong>Upload up to 3 photos</strong>
+          <small>A visual placeholder is generated if skipped.</small>
         </label>
-        <div class="upload-preview is-hidden" id="itemPhotoPreviewWrap">
-          <img id="itemPhotoPreview" alt="Selected clothing preview" />
-        </div>
+        <div class="upload-preview-grid is-hidden" id="itemPhotoPreviewWrap"></div>
 
         <div class="form-grid">
           <label>

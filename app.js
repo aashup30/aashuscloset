@@ -117,6 +117,7 @@ let currentUser = null;
 let cloudSaveTimer = null;
 let quickMasterClicks = 0;
 let quickMasterClickTimer = null;
+let selectedPhotoFiles = [];
 const supabaseConfig = window.AASHUS_CLOSET_SUPABASE;
 const supabaseClient =
   window.supabase && supabaseConfig?.url && supabaseConfig?.publishableKey
@@ -168,7 +169,6 @@ const els = {
   itemFormError: document.querySelector("#itemFormError"),
   itemPhotoInput: document.querySelector("#itemPhotoInput"),
   itemPhotoPreviewWrap: document.querySelector("#itemPhotoPreviewWrap"),
-  itemPhotoPreview: document.querySelector("#itemPhotoPreview"),
   searchInput: document.querySelector("#searchInput"),
   categoryFilter: document.querySelector("#categoryFilter"),
   locationFilter: document.querySelector("#locationFilter"),
@@ -456,6 +456,10 @@ function renderGarment(entry, small = false) {
   </svg>`;
 }
 
+function primaryImageFrom(images) {
+  return images?.[0] || "";
+}
+
 function renderItemCard(entry, compact = false) {
   return `<article class="item-card clickable-card" data-item-card="${entry.id}" tabindex="0" aria-label="Open ${entry.name}">
     <div class="item-visual">${renderGarment(entry, compact)}</div>
@@ -471,6 +475,42 @@ function renderItemCard(entry, compact = false) {
       <div class="tag-row">${(entry.tags || []).map((tag) => `<span class="tag">${tag}</span>`).join("")}</div>
     </div>
   </article>`;
+}
+
+function deleteItem(itemId) {
+  const entry = getItem(itemId);
+  if (!entry || !window.confirm(`Delete "${entry.name}"? This removes it from outfits and boards too.`)) return;
+  state.items = state.items.filter((item) => item.id !== itemId);
+  state.outfits.forEach((outfit) => {
+    outfit.itemIds = outfit.itemIds.filter((id) => id !== itemId);
+  });
+  state.boards.forEach((board) => {
+    board.itemIds = (board.itemIds || []).filter((id) => id !== itemId);
+  });
+  saveState();
+  els.itemDetailDialog.close();
+  renderAll();
+}
+
+function deleteOutfit(outfitId) {
+  const outfit = state.outfits.find((entry) => entry.id === outfitId);
+  if (!outfit || !window.confirm(`Delete outfit "${outfit.name}"?`)) return;
+  state.outfits = state.outfits.filter((entry) => entry.id !== outfitId);
+  state.boards.forEach((board) => {
+    board.outfitIds = (board.outfitIds || []).filter((id) => id !== outfitId);
+  });
+  saveState();
+  els.outfitDetailDialog.close();
+  renderAll();
+}
+
+function deleteBoard(boardId) {
+  const board = state.boards.find((entry) => entry.id === boardId);
+  if (!board || !window.confirm(`Delete board "${board.name}"?`)) return;
+  state.boards = state.boards.filter((entry) => entry.id !== boardId);
+  activeBoardDetailId = "";
+  saveState();
+  renderBoards();
 }
 
 function syncPermissions() {
@@ -548,6 +588,7 @@ function openItemDetail(itemId) {
         <input name="tags" value="${(entry.tags || []).join(", ")}" placeholder="comma separated">
       </label>
       <button class="tiny-button" type="submit">Save item details</button>
+      <button class="danger-button" type="button" data-delete-item="${entry.id}">Delete item</button>
     </form>
     ${isPublicBoard() ? "" : `<form class="item-action-form" data-detail-outfit-add="${entry.id}">
       <select name="outfitId" aria-label="Add ${entry.name} to outfit" ${outfitOptions ? "" : "disabled"}>
@@ -782,6 +823,7 @@ function openOutfitDetail(outfitId) {
         <textarea name="notes" rows="3" placeholder="Add notes about this outfit">${outfit.notes || ""}</textarea>
       </label>
       <button class="tiny-button" type="submit">Save outfit details</button>
+      <button class="danger-button" type="button" data-delete-outfit="${outfit.id}">Delete outfit</button>
     </form>
     ${isPublicBoard() ? "" : `<button class="primary-button full-width" type="button" data-open-outfit-piece-picker="${outfit.id}">Add piece</button>`}
     <div class="closet-grid detail-grid">${items.map((entry) => renderItemCard(entry, true)).join("")}</div>`;
@@ -892,6 +934,7 @@ function renderBoardDetail(boardId) {
     </div>
     <div class="share-row">
       ${isMaster() ? `<button class="board-plus static-plus" type="button" data-open-board-picker="${board.id}" aria-label="Add to ${board.name}">+</button>` : ""}
+      ${isMaster() ? `<button class="danger-button compact-danger" type="button" data-delete-board="${board.id}">Delete board</button>` : ""}
       <button class="tiny-button" type="button" data-share-board="${board.id}">Copy link</button>
     </div>
   </div>
@@ -1049,6 +1092,36 @@ async function uploadItemPhoto(file, itemId) {
   return data.publicUrl;
 }
 
+async function uploadItemPhotos(files, itemId) {
+  const urls = [];
+  for (const [index, file] of files.slice(0, 3).entries()) {
+    urls.push(await uploadItemPhoto(file, `${itemId}-${index + 1}`));
+  }
+  return urls.filter(Boolean);
+}
+
+async function renderPhotoPreviews() {
+  if (!selectedPhotoFiles.length) {
+    els.itemPhotoPreviewWrap.innerHTML = "";
+    els.itemPhotoPreviewWrap.classList.add("is-hidden");
+    return;
+  }
+  const previews = await Promise.all(selectedPhotoFiles.map((file) => fileToDataUrl(file)));
+  els.itemPhotoPreviewWrap.innerHTML = previews
+    .map(
+      (src, index) => `<div class="upload-preview-tile">
+        <img src="${src}" alt="Selected clothing preview ${index + 1}">
+        <div class="preview-actions">
+          <button class="tiny-button" type="button" data-photo-up="${index}" ${index === 0 ? "disabled" : ""}>Up</button>
+          <button class="tiny-button" type="button" data-photo-down="${index}" ${index === selectedPhotoFiles.length - 1 ? "disabled" : ""}>Down</button>
+        </div>
+        ${index === 0 ? '<span class="tag">Display image</span>' : ""}
+      </div>`,
+    )
+    .join("");
+  els.itemPhotoPreviewWrap.classList.remove("is-hidden");
+}
+
 function handleHash() {
   const match = window.location.hash.match(/^#board=(.+)$/);
   if (!match) return;
@@ -1121,14 +1194,19 @@ els.addItemButton.addEventListener("click", () => els.itemDialog.showModal());
 els.closeDialogButton.addEventListener("click", () => els.itemDialog.close());
 
 els.itemPhotoInput.addEventListener("change", async () => {
-  const file = els.itemPhotoInput.files?.[0];
-  if (!file) {
-    els.itemPhotoPreview.removeAttribute("src");
-    els.itemPhotoPreviewWrap.classList.add("is-hidden");
-    return;
-  }
-  els.itemPhotoPreview.src = await fileToDataUrl(file);
-  els.itemPhotoPreviewWrap.classList.remove("is-hidden");
+  selectedPhotoFiles = [...(els.itemPhotoInput.files || [])].slice(0, 3);
+  await renderPhotoPreviews();
+});
+
+els.itemPhotoPreviewWrap.addEventListener("click", async (event) => {
+  const upButton = event.target.closest("[data-photo-up]");
+  const downButton = event.target.closest("[data-photo-down]");
+  if (!upButton && !downButton) return;
+  const index = Number(upButton?.dataset.photoUp ?? downButton?.dataset.photoDown);
+  const targetIndex = upButton ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= selectedPhotoFiles.length) return;
+  [selectedPhotoFiles[index], selectedPhotoFiles[targetIndex]] = [selectedPhotoFiles[targetIndex], selectedPhotoFiles[index]];
+  await renderPhotoPreviews();
 });
 
 [els.searchInput, els.categoryFilter, els.locationFilter].forEach((input) => input.addEventListener("input", renderCloset));
@@ -1185,6 +1263,8 @@ els.itemDetailContent.addEventListener("click", (event) => {
   if (event.target.closest("[data-toggle-item-edit]")) {
     els.itemDetailContent.querySelector("[data-item-edit]")?.classList.toggle("is-hidden");
   }
+  const deleteButton = event.target.closest("[data-delete-item]");
+  if (deleteButton) deleteItem(deleteButton.dataset.deleteItem);
 });
 
 els.outfitDetailContent.addEventListener("click", (event) => {
@@ -1203,6 +1283,8 @@ els.outfitDetailContent.addEventListener("click", (event) => {
     renderOutfits();
     openOutfitDetail(outfit.id);
   }
+  const deleteButton = event.target.closest("[data-delete-outfit]");
+  if (deleteButton) deleteOutfit(deleteButton.dataset.deleteOutfit);
 });
 
 els.closeOutfitPieceDialog.addEventListener("click", () => els.outfitPieceDialog.close());
@@ -1317,6 +1399,13 @@ els.boardDetailView.addEventListener("click", async (event) => {
     return;
   }
 
+  const deleteBoardButton = event.target.closest("[data-delete-board]");
+  if (deleteBoardButton) {
+    if (!isMaster()) return;
+    deleteBoard(deleteBoardButton.dataset.deleteBoard);
+    return;
+  }
+
   const removeButton = event.target.closest("[data-remove-board-item]");
   if (removeButton) {
     if (!isMaster()) return;
@@ -1381,7 +1470,7 @@ els.itemForm.addEventListener("submit", async (event) => {
     const locations = listFromText(form.get("location"));
     if (!locations.length) throw new Error("Add at least one location.");
     const id = `${slug(name)}-${Date.now().toString(36)}`;
-    const photo = await uploadItemPhoto(form.get("photo"), id);
+    const photos = await uploadItemPhotos(selectedPhotoFiles, id);
     const entry = {
       id,
       name,
@@ -1393,14 +1482,15 @@ els.itemForm.addEventListener("submit", async (event) => {
       locations,
       location: locations[0] || "",
       tags: tagsFromText(form.get("tags")),
-      image: photo,
+      images: photos,
+      image: primaryImageFrom(photos),
     };
     state.items.unshift(entry);
     state.selectedLocation = entry.location;
     saveState();
     els.itemForm.reset();
-    els.itemPhotoPreview.removeAttribute("src");
-    els.itemPhotoPreviewWrap.classList.add("is-hidden");
+    selectedPhotoFiles = [];
+    await renderPhotoPreviews();
     updateSelectedColorNames();
     els.itemDialog.close();
     renderAll();
@@ -1417,7 +1507,7 @@ els.outfitForm.addEventListener("submit", (event) => {
   state.outfits.unshift({
     id: `${slug(form.get("name"))}-${Date.now().toString(36)}`,
     name: form.get("name").trim(),
-    occasion: form.get("occasion").trim(),
+    occasion: "",
     tags: tagsFromText(form.get("tags")),
     notes: form.get("notes").trim(),
     itemIds,
