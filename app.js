@@ -1,6 +1,8 @@
 const STORAGE_KEY = "mycloset.state.v1";
 const AUTH_KEY = "aashuscloset.role";
 const CLOUD_STATE_ID = "main";
+const PHOTO_BUCKET = "closet-photos";
+const LOCAL_MASTER_PASSWORD = "aashnichirakpatelpapa";
 
 const baseCategories = ["Tops", "Bottoms", "Outerwear", "Accessories", "Cultural Wear", "Shoes"];
 const colorOptions = [
@@ -120,6 +122,7 @@ const supabaseClient =
 const els = {
   authScreen: document.querySelector("#authScreen"),
   authForm: document.querySelector("#authForm"),
+  quickMasterButton: document.querySelector("#quickMasterButton"),
   emailInput: document.querySelector("#emailInput"),
   passwordInput: document.querySelector("#passwordInput"),
   authError: document.querySelector("#authError"),
@@ -978,6 +981,35 @@ async function fileToDataUrl(file) {
   });
 }
 
+async function compressImage(file, maxSize = 1200, quality = 0.78) {
+  if (!file || !file.size) return null;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext("2d");
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+}
+
+async function uploadItemPhoto(file, itemId) {
+  if (!file || !file.size) return "";
+  if (!supabaseClient || !currentUser) {
+    return fileToDataUrl(file);
+  }
+  const blob = await compressImage(file);
+  if (!blob) return "";
+  const path = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
+  const { error } = await supabaseClient.storage.from(PHOTO_BUCKET).upload(path, blob, {
+    contentType: "image/jpeg",
+    upsert: true,
+  });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
 function handleHash() {
   const match = window.location.hash.match(/^#board=(.+)$/);
   if (!match) return;
@@ -1012,6 +1044,20 @@ els.authForm.addEventListener("submit", async (event) => {
   } catch (error) {
     els.authError.textContent = error.message || "Login failed.";
   }
+});
+
+els.quickMasterButton.addEventListener("click", () => {
+  const password = window.prompt("Master password");
+  if (password !== LOCAL_MASTER_PASSWORD) {
+    els.authError.textContent = "That password did not work.";
+    return;
+  }
+  currentRole = "master";
+  currentUser = null;
+  sessionStorage.setItem(AUTH_KEY, currentRole);
+  els.authError.textContent = "";
+  syncPermissions();
+  renderAll();
 });
 
 els.logoutButton.addEventListener("click", async () => {
@@ -1257,9 +1303,10 @@ els.itemForm.addEventListener("submit", async (event) => {
   const form = new FormData(els.itemForm);
   const name = form.get("name").trim();
   const colors = form.getAll("colors");
-  const photo = await fileToDataUrl(form.get("photo"));
+  const id = `${slug(name)}-${Date.now().toString(36)}`;
+  const photo = await uploadItemPhoto(form.get("photo"), id);
   const entry = {
-    id: `${slug(name)}-${Date.now().toString(36)}`,
+    id,
     name,
     brand: form.get("brand").trim(),
     category: form.get("category").trim(),

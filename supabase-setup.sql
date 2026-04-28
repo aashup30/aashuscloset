@@ -77,6 +77,36 @@ for each row execute function public.touch_closet_state();
 -- insert into public.profiles (user_id, role)
 -- values ('MASTER_USER_UUID_HERE', 'master')
 -- on conflict (user_id) do update set role = excluded.role;
+
+-- Optional but recommended for item photos:
+-- Create this bucket in Storage -> New bucket:
+--   Name: closet-photos
+--   Public bucket: ON
+--
+-- Then run these policies so logged-in users can upload/read photos.
+
+insert into storage.buckets (id, name, public)
+values ('closet-photos', 'closet-photos', true)
+on conflict (id) do update set public = excluded.public;
+
+drop policy if exists "Authenticated users can upload closet photos" on storage.objects;
+create policy "Authenticated users can upload closet photos"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'closet-photos');
+
+drop policy if exists "Authenticated users can update closet photos" on storage.objects;
+create policy "Authenticated users can update closet photos"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'closet-photos')
+with check (bucket_id = 'closet-photos');
+
+drop policy if exists "Anyone can read closet photos" on storage.objects;
+create policy "Anyone can read closet photos"
+on storage.objects for select
+to public
+using (bucket_id = 'closet-photos');
 --
 -- insert into public.profiles (user_id, role)
 -- values ('GUEST_USER_UUID_HERE', 'guest')
