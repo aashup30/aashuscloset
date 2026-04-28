@@ -161,6 +161,7 @@ const els = {
   boardPickerGrid: document.querySelector("#boardPickerGrid"),
   closeDialogButton: document.querySelector("#closeDialogButton"),
   itemForm: document.querySelector("#itemForm"),
+  itemFormError: document.querySelector("#itemFormError"),
   searchInput: document.querySelector("#searchInput"),
   categoryFilter: document.querySelector("#categoryFilter"),
   locationFilter: document.querySelector("#locationFilter"),
@@ -1300,31 +1301,38 @@ els.boardPickerForm.addEventListener("submit", (event) => {
 
 els.itemForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const form = new FormData(els.itemForm);
-  const name = form.get("name").trim();
-  const colors = form.getAll("colors");
-  const id = `${slug(name)}-${Date.now().toString(36)}`;
-  const photo = await uploadItemPhoto(form.get("photo"), id);
-  const entry = {
-    id,
-    name,
-    brand: form.get("brand").trim(),
-    category: form.get("category").trim(),
-    type: form.get("type").trim(),
-    material: form.get("material").trim(),
-    colors: colors.length ? colors : [colorValueFromName("Gray")],
-    locations: listFromText(form.get("location")),
-    location: listFromText(form.get("location"))[0] || "",
-    tags: tagsFromText(form.get("tags")),
-    image: photo,
-  };
-  state.items.unshift(entry);
-  state.selectedLocation = entry.location;
-  saveState();
-  els.itemForm.reset();
-  updateSelectedColorNames();
-  els.itemDialog.close();
-  renderAll();
+  els.itemFormError.textContent = "";
+  try {
+    const form = new FormData(els.itemForm);
+    const name = form.get("name").trim();
+    const colors = form.getAll("colors");
+    const locations = listFromText(form.get("location"));
+    if (!locations.length) throw new Error("Add at least one location.");
+    const id = `${slug(name)}-${Date.now().toString(36)}`;
+    const photo = await uploadItemPhoto(form.get("photo"), id);
+    const entry = {
+      id,
+      name,
+      brand: form.get("brand").trim(),
+      category: form.get("category").trim(),
+      type: form.get("type").trim(),
+      material: form.get("material").trim(),
+      colors: colors.length ? colors : [colorValueFromName("Gray")],
+      locations,
+      location: locations[0] || "",
+      tags: tagsFromText(form.get("tags")),
+      image: photo,
+    };
+    state.items.unshift(entry);
+    state.selectedLocation = entry.location;
+    saveState();
+    els.itemForm.reset();
+    updateSelectedColorNames();
+    els.itemDialog.close();
+    renderAll();
+  } catch (error) {
+    els.itemFormError.textContent = error.message || "Could not add item.";
+  }
 });
 
 els.outfitForm.addEventListener("submit", (event) => {

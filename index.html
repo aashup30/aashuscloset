@@ -10,7 +10,7 @@
     <section class="auth-screen" id="authScreen">
       <form class="auth-card" id="authForm">
         <div class="brand-lockup">
-          <div class="brand-mark" aria-hidden="true">AC</div>
+          <button class="brand-mark brand-button" id="quickMasterButton" type="button" aria-label="Master shortcut">AC</button>
           <div>
             <h1>Aashu's Closet</h1>
             <p>Your Closet, Organized</p>
@@ -222,6 +222,7 @@
         </div>
 
         <button class="primary-button full-width" type="submit">Add to closet</button>
+        <p class="auth-error" id="itemFormError" role="alert"></p>
         <datalist id="categoryOptions"></datalist>
         <datalist id="typeOptions"></datalist>
         <datalist id="locationOptions"></datalist>
