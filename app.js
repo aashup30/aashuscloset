@@ -302,7 +302,7 @@ async function loadRoleForUser() {
   const { data, error } = await supabaseClient.from("profiles").select("role").eq("user_id", currentUser.id).maybeSingle();
   if (error) throw error;
   if (!data?.role) {
-    throw new Error("This login does not have a closet role yet. Add this user's UUID to public.profiles as master or guest.");
+    throw new Error(`This login does not have a closet role yet. Add user UUID ${currentUser.id} to public.profiles as master or guest.`);
   }
   currentRole = data.role;
   sessionStorage.setItem(AUTH_KEY, currentRole);
