@@ -176,11 +176,14 @@
         </div>
 
         <label class="upload-box">
-          <input name="photo" type="file" accept="image/*" />
+          <input name="photo" id="itemPhotoInput" type="file" accept="image/*" />
           <span aria-hidden="true">▧</span>
           <strong>Upload photo</strong>
           <small>Optional for demo. A visual placeholder is generated if skipped.</small>
         </label>
+        <div class="upload-preview is-hidden" id="itemPhotoPreviewWrap">
+          <img id="itemPhotoPreview" alt="Selected clothing preview" />
+        </div>
 
         <div class="form-grid">
           <label>
@@ -193,11 +196,11 @@
           </label>
           <label>
             Category
-            <input name="category" id="itemCategoryInput" list="categoryOptions" required placeholder="Tops" />
+            <select name="category" id="itemCategoryInput" required></select>
           </label>
           <label>
             Type
-            <input name="type" id="itemTypeInput" list="typeOptions" required placeholder="Button-up" />
+            <select name="type" id="itemTypeInput" required></select>
           </label>
           <label>
             Material
@@ -205,7 +208,7 @@
           </label>
           <label>
             Location
-            <input name="location" id="itemLocationInput" list="locationOptions" required placeholder="Home" />
+            <select name="location" id="itemLocationInput" required></select>
           </label>
           <fieldset class="wide-field color-field">
             <legend>Colors</legend>

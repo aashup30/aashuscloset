@@ -5,6 +5,8 @@ const PHOTO_BUCKET = "closet-photos";
 const LOCAL_MASTER_PASSWORD = "aashnichirakpatelpapa";
 
 const baseCategories = ["Tops", "Bottoms", "Outerwear", "Accessories", "Cultural Wear", "Shoes"];
+const baseTypes = ["Bag", "Blouse", "Button-up", "Dupatta", "Jacket", "Jeans", "Lehenga", "Shirt", "Shoes", "Sweater", "T-shirt", "Trouser"];
+const baseLocations = ["Home", "Mom's House", "Lake House", "Storage", "Austria"];
 const colorOptions = [
   ["Black", "#242424"],
   ["White", "#f5f2e8"],
@@ -162,6 +164,9 @@ const els = {
   closeDialogButton: document.querySelector("#closeDialogButton"),
   itemForm: document.querySelector("#itemForm"),
   itemFormError: document.querySelector("#itemFormError"),
+  itemPhotoInput: document.querySelector("#itemPhotoInput"),
+  itemPhotoPreviewWrap: document.querySelector("#itemPhotoPreviewWrap"),
+  itemPhotoPreview: document.querySelector("#itemPhotoPreview"),
   searchInput: document.querySelector("#searchInput"),
   categoryFilter: document.querySelector("#categoryFilter"),
   locationFilter: document.querySelector("#locationFilter"),
@@ -179,6 +184,9 @@ const els = {
   boardForm: document.querySelector("#boardForm"),
   boardGrid: document.querySelector("#boardGrid"),
   boardDetailView: document.querySelector("#boardDetailView"),
+  itemCategoryInput: document.querySelector("#itemCategoryInput"),
+  itemTypeInput: document.querySelector("#itemTypeInput"),
+  itemLocationInput: document.querySelector("#itemLocationInput"),
   categoryOptions: document.querySelector("#categoryOptions"),
   typeOptions: document.querySelector("#typeOptions"),
   locationOptions: document.querySelector("#locationOptions"),
@@ -596,11 +604,14 @@ function filteredItems() {
 
 function renderDataLists() {
   const categories = unique([...baseCategories, ...state.items.map((entry) => entry.category)]);
-  const locations = unique(state.items.flatMap(locationsFor));
-  const types = unique(state.items.map((entry) => entry.type));
+  const locations = unique([...baseLocations, ...state.items.flatMap(locationsFor)]);
+  const types = unique([...baseTypes, ...state.items.map((entry) => entry.type)]);
   els.categoryOptions.innerHTML = categories.map((category) => `<option value="${category}"></option>`).join("");
   els.typeOptions.innerHTML = types.map((type) => `<option value="${type}"></option>`).join("");
   els.locationOptions.innerHTML = locations.map((location) => `<option value="${location}"></option>`).join("");
+  els.itemCategoryInput.innerHTML = optionList(categories, "Select category");
+  els.itemTypeInput.innerHTML = optionList(types, "Select type");
+  els.itemLocationInput.innerHTML = optionList(locations, "Select location");
   els.tagOptions.innerHTML = unique([...state.items.flatMap((entry) => entry.tags), ...state.outfits.flatMap((outfit) => outfit.tags || [])])
     .map((tag) => `<option value="${tag}"></option>`)
     .join("");
@@ -611,6 +622,10 @@ function renderDataLists() {
     .map((location) => `<option>${location}</option>`)
     .join("")}`;
   renderTags();
+}
+
+function optionList(values, label) {
+  return `<option value="">${label}</option>${values.map((value) => `<option>${value}</option>`).join("")}<option value="__add">Add new...</option>`;
 }
 
 function renderTags() {
@@ -984,6 +999,7 @@ async function fileToDataUrl(file) {
 
 async function compressImage(file, maxSize = 1200, quality = 0.78) {
   if (!file || !file.size) return null;
+  if (!window.createImageBitmap) return null;
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
@@ -994,16 +1010,36 @@ async function compressImage(file, maxSize = 1200, quality = 0.78) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
 }
 
+function fileExtensionForUpload(file, compressed) {
+  if (compressed) return "jpg";
+  const fromName = file.name?.split(".").pop()?.toLowerCase();
+  if (fromName && fromName.length <= 5) return fromName;
+  if (file.type === "image/png") return "png";
+  if (file.type === "image/heic") return "heic";
+  if (file.type === "image/heif") return "heif";
+  return "jpg";
+}
+
 async function uploadItemPhoto(file, itemId) {
   if (!file || !file.size) return "";
   if (!supabaseClient || !currentUser) {
     return fileToDataUrl(file);
   }
-  const blob = await compressImage(file);
-  if (!blob) return "";
-  const path = `${currentUser.id}/${itemId}-${Date.now()}.jpg`;
-  const { error } = await supabaseClient.storage.from(PHOTO_BUCKET).upload(path, blob, {
-    contentType: "image/jpeg",
+  let uploadBody = file;
+  let compressed = false;
+  try {
+    const blob = await compressImage(file);
+    if (blob) {
+      uploadBody = blob;
+      compressed = true;
+    }
+  } catch (error) {
+    console.warn("Photo compression failed; uploading original file", error);
+  }
+  const contentType = compressed ? "image/jpeg" : file.type || "application/octet-stream";
+  const path = `${currentUser.id}/${itemId}-${Date.now()}.${fileExtensionForUpload(file, compressed)}`;
+  const { error } = await supabaseClient.storage.from(PHOTO_BUCKET).upload(path, uploadBody, {
+    contentType,
     upsert: true,
   });
   if (error) throw error;
@@ -1073,6 +1109,17 @@ els.logoutButton.addEventListener("click", async () => {
 els.addItemButton.addEventListener("click", () => els.itemDialog.showModal());
 els.closeDialogButton.addEventListener("click", () => els.itemDialog.close());
 
+els.itemPhotoInput.addEventListener("change", async () => {
+  const file = els.itemPhotoInput.files?.[0];
+  if (!file) {
+    els.itemPhotoPreview.removeAttribute("src");
+    els.itemPhotoPreviewWrap.classList.add("is-hidden");
+    return;
+  }
+  els.itemPhotoPreview.src = await fileToDataUrl(file);
+  els.itemPhotoPreviewWrap.classList.remove("is-hidden");
+});
+
 [els.searchInput, els.categoryFilter, els.locationFilter].forEach((input) => input.addEventListener("input", renderCloset));
 
 els.outfitItemSearch.addEventListener("input", renderOutfits);
@@ -1084,6 +1131,20 @@ els.tagFilter.addEventListener("change", () => {
 });
 
 els.itemColorChips.addEventListener("change", updateSelectedColorNames);
+
+[els.itemCategoryInput, els.itemTypeInput, els.itemLocationInput].forEach((select) => {
+  select.addEventListener("change", () => {
+    if (select.value !== "__add") return;
+    const label = select.name[0].toUpperCase() + select.name.slice(1);
+    const value = window.prompt(`New ${label}`);
+    if (!value?.trim()) {
+      select.value = "";
+      return;
+    }
+    const option = new Option(value.trim(), value.trim(), true, true);
+    select.insertBefore(option, select.querySelector('option[value="__add"]'));
+  });
+});
 
 els.locationButtons.addEventListener("click", (event) => {
   const button = event.target.closest("[data-location]");
@@ -1327,6 +1388,8 @@ els.itemForm.addEventListener("submit", async (event) => {
     state.selectedLocation = entry.location;
     saveState();
     els.itemForm.reset();
+    els.itemPhotoPreview.removeAttribute("src");
+    els.itemPhotoPreviewWrap.classList.add("is-hidden");
     updateSelectedColorNames();
     els.itemDialog.close();
     renderAll();
