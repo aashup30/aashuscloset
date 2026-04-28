@@ -848,6 +848,18 @@ label,
   padding: 0 10px;
 }
 
+.subtle-button {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .danger-button {
   min-height: 36px;
   border-radius: var(--radius);
@@ -923,6 +935,7 @@ dialog::backdrop {
 }
 
 .upload-preview-tile {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -930,6 +943,17 @@ dialog::backdrop {
   display: grid;
   gap: 8px;
   padding: 8px;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.upload-preview-tile.is-dragging {
+  border-color: var(--accent);
+  box-shadow: 0 12px 26px rgba(39, 45, 40, 0.16);
+  cursor: grabbing;
+  opacity: 0.82;
+  transform: scale(0.98);
 }
 
 .upload-preview-tile img {
@@ -940,10 +964,21 @@ dialog::backdrop {
   border-radius: 6px;
 }
 
-.preview-actions {
+.photo-remove-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--ink);
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  place-items: center;
+  font-size: 1.1rem;
+  line-height: 1;
+  z-index: 1;
 }
 
 .form-grid {
@@ -954,6 +989,120 @@ dialog::backdrop {
 
 .wide-field {
   grid-column: 1 / -1;
+}
+
+.select-value-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.editable-select {
+  position: relative;
+}
+
+.editable-select-trigger {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 11px;
+  text-align: left;
+}
+
+.editable-select-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 6px;
+}
+
+.editable-option-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.editable-option-row:hover {
+  background: var(--soft);
+}
+
+.editable-option,
+.option-more,
+.option-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.editable-option {
+  min-height: 34px;
+  padding: 0 8px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.option-more {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.option-more:hover {
+  background: rgba(32, 36, 33, 0.08);
+  color: var(--ink);
+}
+
+.option-actions {
+  position: absolute;
+  z-index: 11;
+  top: 28px;
+  right: 4px;
+  min-width: 110px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 4px;
+  display: grid;
+}
+
+.option-actions button {
+  min-height: 30px;
+  border-radius: 6px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.option-actions button:hover,
+.add-option:hover {
+  background: var(--soft);
+}
+
+.add-option {
+  width: 100%;
+  color: var(--accent);
+  font-weight: 800;
 }
 
 .color-field {

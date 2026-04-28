@@ -107,6 +107,11 @@ const defaultState = {
   ],
   activeTag: "",
   selectedLocation: "",
+  hiddenOptions: {
+    category: [],
+    type: [],
+    location: [],
+  },
 };
 
 let state = normalizeState(loadState());
@@ -119,6 +124,7 @@ let cloudSaveTimer = null;
 let quickMasterClicks = 0;
 let quickMasterClickTimer = null;
 let selectedPhotoFiles = [];
+let draggedPhotoIndex = null;
 const supabaseConfig = window.AASHUS_CLOSET_SUPABASE;
 const supabaseClient =
   window.supabase && supabaseConfig?.url && supabaseConfig?.publishableKey
@@ -189,6 +195,7 @@ const els = {
   itemCategoryInput: document.querySelector("#itemCategoryInput"),
   itemTypeInput: document.querySelector("#itemTypeInput"),
   itemLocationInput: document.querySelector("#itemLocationInput"),
+  editableSelects: document.querySelectorAll("[data-editable-select]"),
   categoryOptions: document.querySelector("#categoryOptions"),
   typeOptions: document.querySelector("#typeOptions"),
   locationOptions: document.querySelector("#locationOptions"),
@@ -304,6 +311,11 @@ function normalizeState(raw) {
     boards: migratedBoards,
     activeTag: raw.activeTag || "",
     selectedLocation: raw.selectedLocation || "",
+    hiddenOptions: {
+      category: raw.hiddenOptions?.category || [],
+      type: raw.hiddenOptions?.type || [],
+      location: raw.hiddenOptions?.location || [],
+    },
   };
 }
 
@@ -408,6 +420,11 @@ function colorNameFromHex(hex) {
 
 function colorValueFromName(name) {
   return colorOptions.find(([label]) => label.toLowerCase() === name?.toLowerCase())?.[1] || "";
+}
+
+function cleanText(value) {
+  return String(value || "")
+    .replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 }
 
 function tagsFromText(value) {
@@ -664,15 +681,15 @@ function filteredItems() {
 }
 
 function renderDataLists() {
-  const categories = unique([...baseCategories, ...state.items.map((entry) => entry.category)]);
-  const locations = unique([...baseLocations, ...state.items.flatMap(locationsFor)]);
-  const types = unique([...baseTypes, ...state.items.map((entry) => entry.type)]);
+  const categories = optionValues("category", [...baseCategories, ...state.items.map((entry) => entry.category)]);
+  const locations = optionValues("location", [...baseLocations, ...state.items.flatMap(locationsFor)]);
+  const types = optionValues("type", [...baseTypes, ...state.items.map((entry) => entry.type)]);
   els.categoryOptions.innerHTML = categories.map((category) => `<option value="${category}"></option>`).join("");
   els.typeOptions.innerHTML = types.map((type) => `<option value="${type}"></option>`).join("");
   els.locationOptions.innerHTML = locations.map((location) => `<option value="${location}"></option>`).join("");
-  els.itemCategoryInput.innerHTML = optionList(categories, "Select category");
-  els.itemTypeInput.innerHTML = optionList(types, "Select type");
-  els.itemLocationInput.innerHTML = optionList(locations, "Select location");
+  renderEditableSelect("category", categories, "Select category");
+  renderEditableSelect("type", types, "Select type");
+  renderEditableSelect("location", locations, "Select location");
   els.tagOptions.innerHTML = unique([...state.items.flatMap((entry) => entry.tags), ...state.outfits.flatMap((outfit) => outfit.tags || [])])
     .map((tag) => `<option value="${tag}"></option>`)
     .join("");
@@ -685,8 +702,83 @@ function renderDataLists() {
   renderTags();
 }
 
-function optionList(values, label) {
-  return `<option value="">${label}</option>${values.map((value) => `<option>${value}</option>`).join("")}<option value="__add">Add new...</option>`;
+function optionValues(key, values) {
+  const hidden = new Set(state.hiddenOptions?.[key] || []);
+  return unique(values).filter((value) => !hidden.has(value));
+}
+
+function inputForEditableSelect(key) {
+  return key === "category" ? els.itemCategoryInput : key === "type" ? els.itemTypeInput : els.itemLocationInput;
+}
+
+function editableLabel(key) {
+  return key === "category" ? "category" : key === "type" ? "type" : "location";
+}
+
+function renderEditableSelect(key, values, placeholder) {
+  const input = inputForEditableSelect(key);
+  const control = [...els.editableSelects].find((select) => select.dataset.editableSelect === key);
+  if (!control) return;
+  const selected = input.value;
+  control.innerHTML = `<button class="editable-select-trigger" type="button" data-select-toggle="${key}">
+      <span>${cleanText(selected || placeholder)}</span>
+      <span aria-hidden="true">⌄</span>
+    </button>
+    <div class="editable-select-menu is-hidden" data-select-menu="${key}">
+      ${values
+        .map(
+          (value) => `<div class="editable-option-row">
+            <button class="editable-option" type="button" data-select-value="${cleanText(value)}">${cleanText(value)}</button>
+            ${
+              isMaster()
+                ? `<button class="option-more" type="button" data-option-more="${key}" data-option-value="${cleanText(value)}" aria-label="Edit ${cleanText(value)}">...</button>`
+                : ""
+            }
+            <div class="option-actions is-hidden">
+              <button type="button" data-option-rename="${key}" data-option-value="${cleanText(value)}">Rename</button>
+              <button type="button" data-option-delete="${key}" data-option-value="${cleanText(value)}">Delete</button>
+            </div>
+          </div>`,
+        )
+        .join("")}
+      <button class="editable-option add-option" type="button" data-option-add="${key}">+ Add new</button>
+    </div>`;
+}
+
+function closeEditableSelects() {
+  document.querySelectorAll(".editable-select-menu, .option-actions").forEach((menu) => menu.classList.add("is-hidden"));
+}
+
+function replaceListValue(key, target, replacement, persist = true) {
+  if (!target || !replacement || target === replacement) return;
+  state.hiddenOptions[key] = unique([...(state.hiddenOptions[key] || []), target]).filter((value) => value !== replacement);
+  state.items.forEach((entry) => {
+    if (key === "location") {
+      const nextLocations = locationsFor(entry).map((location) => (location === target ? replacement : location));
+      entry.locations = [...new Set(nextLocations.filter(Boolean))];
+      entry.location = entry.locations[0] || "";
+      return;
+    }
+    if (entry[key] === target) entry[key] = replacement;
+  });
+  if (state.selectedLocation === target) state.selectedLocation = replacement;
+  if (els.categoryFilter.value === target) els.categoryFilter.value = "";
+  if (els.locationFilter.value === target) els.locationFilter.value = "";
+  if (inputForEditableSelect(key).value === target) inputForEditableSelect(key).value = replacement;
+  if (persist) saveState();
+}
+
+function deleteListValue(key, target) {
+  const fallback = key === "category" ? "Uncategorized" : key === "type" ? "Item" : "Unassigned";
+  replaceListValue(key, target, fallback, false);
+  state.hiddenOptions[key] = unique([...(state.hiddenOptions[key] || []), target]);
+  if (inputForEditableSelect(key).value === target) inputForEditableSelect(key).value = "";
+  saveState();
+  renderAll();
+}
+
+function revealOptionValue(key, value) {
+  state.hiddenOptions[key] = (state.hiddenOptions[key] || []).filter((hiddenValue) => hiddenValue !== value);
 }
 
 function renderTags() {
@@ -1127,17 +1219,22 @@ async function renderPhotoPreviews() {
   const previews = await Promise.all(selectedPhotoFiles.map((file) => fileToDataUrl(file)));
   els.itemPhotoPreviewWrap.innerHTML = previews
     .map(
-      (src, index) => `<div class="upload-preview-tile">
+      (src, index) => `<div class="upload-preview-tile" data-photo-index="${index}">
+        <button class="photo-remove-button" type="button" data-photo-remove="${index}" aria-label="Remove photo ${index + 1}">×</button>
         <img src="${src}" alt="Selected clothing preview ${index + 1}">
-        <div class="preview-actions">
-          <button class="tiny-button" type="button" data-photo-up="${index}" ${index === 0 ? "disabled" : ""}>Up</button>
-          <button class="tiny-button" type="button" data-photo-down="${index}" ${index === selectedPhotoFiles.length - 1 ? "disabled" : ""}>Down</button>
-        </div>
         ${index === 0 ? '<span class="tag">Display image</span>' : ""}
       </div>`,
     )
     .join("");
   els.itemPhotoPreviewWrap.classList.remove("is-hidden");
+}
+
+async function moveSelectedPhoto(fromIndex, toIndex) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+  if (fromIndex >= selectedPhotoFiles.length || toIndex >= selectedPhotoFiles.length) return;
+  const [movedPhoto] = selectedPhotoFiles.splice(fromIndex, 1);
+  selectedPhotoFiles.splice(toIndex, 0, movedPhoto);
+  await renderPhotoPreviews();
 }
 
 function handleHash() {
@@ -1212,19 +1309,46 @@ els.addItemButton.addEventListener("click", () => els.itemDialog.showModal());
 els.closeDialogButton.addEventListener("click", () => els.itemDialog.close());
 
 els.itemPhotoInput.addEventListener("change", async () => {
-  selectedPhotoFiles = [...(els.itemPhotoInput.files || [])].slice(0, 3);
+  const newFiles = [...(els.itemPhotoInput.files || [])];
+  selectedPhotoFiles = [...selectedPhotoFiles, ...newFiles].slice(0, 3);
+  els.itemPhotoInput.value = "";
   await renderPhotoPreviews();
 });
 
 els.itemPhotoPreviewWrap.addEventListener("click", async (event) => {
-  const upButton = event.target.closest("[data-photo-up]");
-  const downButton = event.target.closest("[data-photo-down]");
-  if (!upButton && !downButton) return;
-  const index = Number(upButton?.dataset.photoUp ?? downButton?.dataset.photoDown);
-  const targetIndex = upButton ? index - 1 : index + 1;
-  if (targetIndex < 0 || targetIndex >= selectedPhotoFiles.length) return;
-  [selectedPhotoFiles[index], selectedPhotoFiles[targetIndex]] = [selectedPhotoFiles[targetIndex], selectedPhotoFiles[index]];
+  const removeButton = event.target.closest("[data-photo-remove]");
+  if (!removeButton) return;
+  selectedPhotoFiles.splice(Number(removeButton.dataset.photoRemove), 1);
   await renderPhotoPreviews();
+});
+
+els.itemPhotoPreviewWrap.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("[data-photo-remove]")) return;
+  const tile = event.target.closest("[data-photo-index]");
+  if (!tile) return;
+  draggedPhotoIndex = Number(tile.dataset.photoIndex);
+  tile.classList.add("is-dragging");
+  tile.setPointerCapture?.(event.pointerId);
+});
+
+els.itemPhotoPreviewWrap.addEventListener("pointerup", async (event) => {
+  if (draggedPhotoIndex === null) return;
+  const sourceIndex = draggedPhotoIndex;
+  const target = document.elementFromPoint(event.clientX, event.clientY);
+  const tile = target?.closest?.("[data-photo-index]");
+  const targetIndex = tile ? Number(tile.dataset.photoIndex) : sourceIndex;
+  draggedPhotoIndex = null;
+  els.itemPhotoPreviewWrap.querySelectorAll(".is-dragging").forEach((draggedTile) => {
+    draggedTile.classList.remove("is-dragging");
+  });
+  await moveSelectedPhoto(sourceIndex, targetIndex);
+});
+
+els.itemPhotoPreviewWrap.addEventListener("pointercancel", () => {
+  draggedPhotoIndex = null;
+  els.itemPhotoPreviewWrap.querySelectorAll(".is-dragging").forEach((tile) => {
+    tile.classList.remove("is-dragging");
+  });
 });
 
 [els.searchInput, els.categoryFilter, els.locationFilter].forEach((input) => input.addEventListener("input", renderCloset));
@@ -1239,18 +1363,70 @@ els.tagFilter.addEventListener("change", () => {
 
 els.itemColorChips.addEventListener("change", updateSelectedColorNames);
 
-[els.itemCategoryInput, els.itemTypeInput, els.itemLocationInput].forEach((select) => {
-  select.addEventListener("change", () => {
-    if (select.value !== "__add") return;
-    const label = select.name[0].toUpperCase() + select.name.slice(1);
-    const value = window.prompt(`New ${label}`);
-    if (!value?.trim()) {
-      select.value = "";
-      return;
-    }
-    const option = new Option(value.trim(), value.trim(), true, true);
-    select.insertBefore(option, select.querySelector('option[value="__add"]'));
-  });
+els.itemForm.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-select-toggle]");
+  if (toggle) {
+    const menu = toggle.nextElementSibling;
+    const willOpen = menu.classList.contains("is-hidden");
+    closeEditableSelects();
+    menu.classList.toggle("is-hidden", !willOpen);
+    return;
+  }
+
+  const option = event.target.closest("[data-select-value]");
+  if (option && !event.target.closest("[data-option-more]")) {
+    const key = option.closest("[data-editable-select]").dataset.editableSelect;
+    inputForEditableSelect(key).value = option.dataset.selectValue;
+    closeEditableSelects();
+    renderDataLists();
+    return;
+  }
+
+  const moreButton = event.target.closest("[data-option-more]");
+  if (moreButton) {
+    const actions = moreButton.parentElement.querySelector(".option-actions");
+    document.querySelectorAll(".option-actions").forEach((menu) => {
+      if (menu !== actions) menu.classList.add("is-hidden");
+    });
+    actions.classList.toggle("is-hidden");
+    return;
+  }
+
+  const addButton = event.target.closest("[data-option-add]");
+  if (addButton) {
+    const key = addButton.dataset.optionAdd;
+    const value = window.prompt(`New ${editableLabel(key)}`);
+    if (!value?.trim()) return;
+    inputForEditableSelect(key).value = value.trim();
+    closeEditableSelects();
+    renderDataLists();
+    return;
+  }
+
+  const renameButton = event.target.closest("[data-option-rename]");
+  if (renameButton) {
+    const key = renameButton.dataset.optionRename;
+    const oldValue = renameButton.dataset.optionValue;
+    const value = window.prompt(`Rename ${oldValue}`, oldValue);
+    if (!value?.trim() || value.trim() === oldValue) return;
+    replaceListValue(key, oldValue, value.trim());
+    closeEditableSelects();
+    renderAll();
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-option-delete]");
+  if (deleteButton) {
+    const key = deleteButton.dataset.optionDelete;
+    const value = deleteButton.dataset.optionValue;
+    if (!window.confirm(`Delete "${value}" from ${editableLabel(key)} options?`)) return;
+    deleteListValue(key, value);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".editable-select")) return;
+  closeEditableSelects();
 });
 
 els.locationButtons.addEventListener("click", (event) => {
@@ -1485,7 +1661,11 @@ els.itemForm.addEventListener("submit", async (event) => {
     const form = new FormData(els.itemForm);
     const name = form.get("name").trim();
     const colors = form.getAll("colors");
+    const category = form.get("category").trim();
+    const type = form.get("type").trim();
     const locations = listFromText(form.get("location"));
+    if (!category) throw new Error("Choose a category.");
+    if (!type) throw new Error("Choose a type.");
     if (!locations.length) throw new Error("Add at least one location.");
     const id = `${slug(name)}-${Date.now().toString(36)}`;
     const photos = await uploadItemPhotos(selectedPhotoFiles, id);
@@ -1493,8 +1673,8 @@ els.itemForm.addEventListener("submit", async (event) => {
       id,
       name,
       brand: form.get("brand").trim(),
-      category: form.get("category").trim(),
-      type: form.get("type").trim(),
+      category,
+      type,
       material: form.get("material").trim(),
       colors: colors.length ? colors : [colorValueFromName("Gray")],
       locations,
@@ -1503,6 +1683,9 @@ els.itemForm.addEventListener("submit", async (event) => {
       images: photos,
       image: primaryImageFrom(photos),
     };
+    revealOptionValue("category", category);
+    revealOptionValue("type", type);
+    locations.forEach((location) => revealOptionValue("location", location));
     state.items.unshift(entry);
     state.selectedLocation = entry.location;
     saveState();
