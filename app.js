@@ -1,5 +1,6 @@
 const STORAGE_KEY = "mycloset.state.v1";
 const AUTH_KEY = "aashuscloset.role";
+const AUTH_EXPIRES_KEY = "aashuscloset.role.expires";
 const CLOUD_STATE_ID = "main";
 const PHOTO_BUCKET = "closet-photos";
 const LOCAL_MASTER_PASSWORD = "aashnichirakpatelpapa";
@@ -143,7 +144,6 @@ const els = {
   },
   viewTitle: document.querySelector("#viewTitle"),
   addItemButton: document.querySelector("#addItemButton"),
-  resetDemoButton: document.querySelector("#resetDemoButton"),
   itemDialog: document.querySelector("#itemDialog"),
   itemDetailDialog: document.querySelector("#itemDetailDialog"),
   itemDetailContent: document.querySelector("#itemDetailContent"),
@@ -226,6 +226,25 @@ function requireSupabase() {
   }
 }
 
+function rememberRole(role) {
+  localStorage.setItem(AUTH_KEY, role);
+  localStorage.setItem(AUTH_EXPIRES_KEY, String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+}
+
+function forgetRole() {
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(AUTH_EXPIRES_KEY);
+}
+
+function getRememberedRole() {
+  const expires = Number(localStorage.getItem(AUTH_EXPIRES_KEY) || 0);
+  if (!expires || Date.now() > expires) {
+    forgetRole();
+    return "";
+  }
+  return localStorage.getItem(AUTH_KEY) || "";
+}
+
 function item(id, name, brand, category, type, material, colors, location, tags) {
   return { id, name, brand, category, type, material, colors, location, tags };
 }
@@ -290,14 +309,14 @@ function normalizeState(raw) {
 
 function initializeAccess() {
   if (isBoardHash()) {
-    currentRole = sessionStorage.getItem(AUTH_KEY) || "public";
+    currentRole = getRememberedRole() || "public";
     syncPermissions();
     renderAll();
     handleHash();
     return;
   }
 
-  const savedRole = sessionStorage.getItem(AUTH_KEY);
+  const savedRole = getRememberedRole();
   if (savedRole === "master" || savedRole === "guest") {
     currentRole = savedRole;
     syncPermissions();
@@ -316,7 +335,7 @@ async function loadRoleForUser() {
     throw new Error(`This login does not have a closet role yet. Add user UUID ${currentUser.id} to public.profiles as master or guest.`);
   }
   currentRole = data.role;
-  sessionStorage.setItem(AUTH_KEY, currentRole);
+  rememberRole(currentRole);
 }
 
 async function initializeSupabaseAccess() {
@@ -519,7 +538,6 @@ function syncPermissions() {
   els.appShell.classList.toggle("is-hidden", !authenticated);
   els.rolePill.textContent = authenticated ? roleLabel() : "";
   els.logoutButton.classList.toggle("is-hidden", isPublicBoard());
-  els.resetDemoButton.classList.toggle("is-hidden", !isMaster());
   document.querySelector('[data-view="boards"]')?.classList.toggle("is-hidden", isGuest());
   els.addItemButton.classList.toggle("is-hidden", isPublicBoard());
   els.boardForm.classList.toggle("is-hidden", !isMaster() || Boolean(activeBoardDetailId));
@@ -1175,7 +1193,7 @@ els.quickMasterButton.addEventListener("click", () => {
   }
   currentRole = "master";
   currentUser = null;
-  sessionStorage.setItem(AUTH_KEY, currentRole);
+  rememberRole(currentRole);
   els.authError.textContent = "";
   syncPermissions();
   renderAll();
@@ -1183,7 +1201,7 @@ els.quickMasterButton.addEventListener("click", () => {
 
 els.logoutButton.addEventListener("click", async () => {
   if (supabaseClient) await supabaseClient.auth.signOut();
-  sessionStorage.removeItem(AUTH_KEY);
+  forgetRole();
   currentUser = null;
   currentRole = "";
   activeBoardDetailId = "";
@@ -1531,14 +1549,6 @@ els.boardForm.addEventListener("submit", (event) => {
   activeBoardDetailId = state.boards[0].id;
   renderBoards();
   renderStats();
-});
-
-els.resetDemoButton.addEventListener("click", () => {
-  state = structuredClone(defaultState);
-  saveState();
-  els.searchInput.value = "";
-  renderAll();
-  setView("closet");
 });
 
 window.addEventListener("hashchange", () => {
